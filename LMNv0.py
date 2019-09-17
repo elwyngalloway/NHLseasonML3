@@ -122,7 +122,7 @@ def extractlag_basic(player, stat4lag, lag, not_season=[] ):
     
 
 
-def extractlag(player, stats4lag, lag ):
+def extractlag(player, stats4lag, lag, not_season = []):
     """
     This one exstacts a wider variety of stats
     
@@ -132,9 +132,12 @@ def extractlag(player, stats4lag, lag ):
     
     player = playerId from the database
     
-    stat4lag = name of stat to be lagged [list of strings]
+    stats4lag = name of stat(s) to be lagged [list of strings]
     
     lag = integer value for lagging (must be positive)
+    
+    not_season = list of seasons not to be included in analysis
+                example: [20162017,20172018]
     """
     
     # connect to our database that will hold everything
@@ -175,7 +178,7 @@ def extractlag(player, stats4lag, lag ):
                     ON s_realtime_events.playerId = s_skater_summary.playerId \
                     AND s_realtime_events.seasonId = s_skater_summary.seasonId \
                 WHERE s_skater_summary.playerID = ? \
-                AND s_skater_summary.seasonId NOT IN (20182019)", [player])
+                AND s_skater_summary.seasonID NOT IN ({})".format(','.join('?' * len(not_season))), not_season+[player])
         
         
 
@@ -227,8 +230,8 @@ def extractlag(player, stats4lag, lag ):
         df = df.iloc[lag:,:]
         
         #return df # may consider changing to return an array
-        return np.array(df)
-        #return df
+        #return np.array(df)
+        return df
     
     else: # return NaNs of appropriate shape in case no data is retreived from database
         
@@ -245,8 +248,8 @@ def extractlag(player, stats4lag, lag ):
                       'shToipG', 'evToipG', 'evAssists', 'ppAssists', 'enGoals',
                       'ppGoals', 'evGoals', 'blocks', 'hitsPerGame')
         #return df
-        return np.array(df)
-        #return df
+        r#eturn np.array(df)
+        return df
  
 
 
@@ -259,7 +262,7 @@ def arrayLSTM_basic(positions, filter_stat, min_stat, stat4lag, not_season=[], q
     a minimum total for filter stat, and the stat to be predicted. Seasons can
     be ignored.
     
-    positions = a list of strings, like this: ['C', 'F', 'L', 'R', 'D']
+    positions = a list of strings, like this: ['C', 'L', 'R', 'D']
     
     filter_stat = a string defining which stat will be used to filter players
                 NOTE: I haven't figured out how to do this yet, so it's
@@ -290,9 +293,9 @@ def arrayLSTM_basic(positions, filter_stat, min_stat, stat4lag, not_season=[], q
     
         # SQLite statement to retreive the data in question (forwards who have
         # scored more than min_stat points in a season):
-        cur.execute("SELECT playerId FROM s_skater_summary WHERE points > {} \
+        cur.execute("SELECT playerId FROM s_skater_summary WHERE {} > {} \
                     AND playerPositionCode IN ({}) \
-                    AND seasonID NOT IN ({})".format('?',','.join('?' * len(positions)),','.join('?' * len(not_season))),[min_stat]+positions+not_season)
+                    AND seasonID NOT IN ({})".format(filter_stat,'?',','.join('?' * len(positions)),','.join('?' * len(not_season))),[min_stat]+positions+not_season)
     
         # Put selected playerIds in an array (playerId is a unique identifier)
         data = np.array(cur.fetchall())
@@ -315,7 +318,7 @@ def arrayLSTM_basic(positions, filter_stat, min_stat, stat4lag, not_season=[], q
     for player in players:
     
         # Start with the first lag
-        interim1 = extractlag_basic(int(player),'points',1,not_season=not_season) # create 2D array of a player's performance
+        interim1 = extractlag_basic(int(player),'points' ,1,not_season=not_season) # create 2D array of a player's performance
         np.array(pd.DataFrame(interim1).dropna(inplace=True)) # ignore "empty" rows
         
         if interim1.shape[0] > 0:
@@ -426,6 +429,176 @@ def arrayLSTM_basic(positions, filter_stat, min_stat, stat4lag, not_season=[], q
 # Let's harness things from here on. Define a function that separates the
 #   data into training and testing sets; trains the model; predicts; evaluates
 #   prediction quality
+
+def arrayLSTM(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=False):
+    """
+    This function will generate an LSTM-ready, lagged array for a set of
+    players, given their positions, a stat on which to filter players,
+    a minimum total for filter stat, and the stat to be predicted. Seasons can
+    be ignored.
+    
+    positions = a list of strings, like this: ['C', 'L', 'R', 'D']
+    
+    filter_stat = a string defining which stat will be used to filter players
+    
+    min_stat = a number defining the minimum value for the stat specified.
+                Players not acheiving that value (or above) in their careers
+                will not be included in the retrieval. Note: a player's entire
+                career is retrieved if they pass the filter criterion for
+                any season.
+    
+    stat4lag = a string defining the stat to be predicted
+    
+    not_season = a list defining seasons ignored by the extraction. For example,
+                [20152016, 20182019]
+                
+    quiet = a parameter to toggle requirement for user input. True means no
+                interaction required.
+    """
+    #Retrieve the players to be included
+    
+    # connect to our database that will hold everything
+    conn = sqlite3.connect(db_name)
+    
+    with conn:
+        # get the cursor so we can do stuff
+        cur = conn.cursor()
+    
+        # SQLite statement to retreive the data in question (forwards who have
+        # scored more than min_stat points in a season):
+        cur.execute("SELECT playerId FROM s_skater_summary WHERE {} > {} \
+                    AND playerPositionCode IN ({}) \
+                    AND seasonID NOT IN ({})".format(filter_stat,'?',','.join('?' * len(positions)),','.join('?' * len(not_season))),[min_stat]+positions+not_season)
+    
+        # Put selected playerIds in an array (playerId is a unique identifier)
+        data = np.array(cur.fetchall())
+
+    # data contains multiple entries for some players (those who have scored
+    # more than 50 points in multiple seasons) - isolate unique values
+    players = np.unique(data)
+
+    # show number of unique players, and prompt to continue
+    print(players.shape[0], "players identified")
+    if quiet == False:
+        if input('Continue? y/n : ') != 'y':
+            print('Not continuing')
+            return
+        else:
+            print('Conintuing')
+
+
+    #Retrieve the stats from the database and apply a lag
+    for player in players:
+    
+        # Start with the first lag
+        interim1 = extractlag(int(player),stats4lag,1,not_season=not_season) # create 2D array of a player's performance
+        np.array(pd.DataFrame(interim1).dropna(inplace=True)) # ignore "empty" rows
+        
+        if interim1.shape[0] > 0:
+    
+            if 'lagged1' in locals(): # if lagged1 already exists, append the player's results to it
+                lagged1 = np.append(lagged1, interim1, axis=0)
+    
+            else: # else, create lagged1
+                lagged1 = interim1[:]
+    
+            
+            # Now the second lag
+            # Ensure lagged2 will have same shape as lagged1 by making each player's
+            # contribution have the same shape for each lag.
+            interim = np.zeros_like(interim1) - 999 # Identify missing data as -999
+    
+            interim2 = extractlag(int(player),stats4lag,2,not_season=not_season)
+            np.array(pd.DataFrame(interim2).dropna(inplace=True))
+    
+            interim[:interim2.shape[0],:] = interim2
+    
+            if 'lagged2' in locals():
+                lagged2 = np.append(lagged2, interim, axis=0)
+    
+            else:
+                lagged2 = interim[:,:]
+    
+            
+            # Now the third lag
+            interim = np.zeros_like(interim1) - 999
+    
+            interim3 = extractlag(int(player), stats4lag, 3,not_season=not_season)
+            np.array(pd.DataFrame(interim3).dropna(inplace=True))
+    
+            interim[:interim3.shape[0],:] = interim3
+    
+            if 'lagged3' in locals():
+                lagged3 = np.append(lagged3, interim, axis=0)
+    
+            else:
+                lagged3 = interim[:,:]
+    
+    
+    # Check that the shapes of the three arrays are identical:
+    if lagged1.shape==lagged2.shape and lagged2.shape==lagged3.shape:
+        print('Lagged arrays all have shape ',lagged1.shape)
+    else:
+        print('Lagged arrays dont have the same shape :( ')
+        print(lagged1.shape,lagged2.shape,lagged3.shape)
+        print('Not continuing')
+        return
+    
+    # Convert these arrays into dataframes for convenience later...
+    #lagged1 = pd.DataFrame(lagged1)
+    #lagged1.columns = ('year', 'points', 'goals', 'ppPoints', 'shots', 'timeOnIcePerGame', 'assists', 'games', 'pointslag')
+    
+    #lagged2 = pd.DataFrame(lagged2)
+    #lagged2.columns = ('year', 'points', 'goals', 'ppPoints', 'shots', 'timeOnIcePerGame', 'assists', 'games', 'pointslag')
+    
+    #lagged3 = pd.DataFrame(lagged3)
+    #lagged3.columns = ('year', 'points', 'goals', 'ppPoints', 'shots', 'timeOnIcePerGame', 'assists', 'games', 'pointslag')
+    
+    
+    #Separate training from target data - always trying to build the model by
+        #predicting the latest season
+        
+    lastseason = int(max(lagged1['year']))
+    
+    # predict from the 20152016 season (lag = 1)
+    lag1predictfrom = lagged1.loc[lagged1['year'] == lastseason]
+    # model from the remaining seasons
+    lag1model = lagged1.loc[lagged1['year'] != lastseason]
+    
+    # predict from the 20142015 season (lag = 2)
+    lag2predictfrom = lagged2.loc[lagged1['year'] == lastseason] # the rows of interest are in the same position as those in lagged1
+    # model from the remaining seasons
+    lag2model = lagged2.loc[lagged1['year'] != lastseason]
+    
+    lag3predictfrom = lagged3.loc[lagged1['year'] == lastseason]
+    lag3model = lagged3.loc[lagged1['year'] != lastseason]
+    
+    
+    # This array contains all data needed test and train the model
+    modelarrayfrom = np.transpose(np.dstack((np.array(lag1model),
+                                        np.array(lag2model),
+                                        np.array(lag3model))), (0,2,1))
+    
+    # This array is the one that will be predicted from:
+    predictarrayfrom = np.transpose(np.dstack((np.array(lag1predictfrom),
+                                          np.array(lag2predictfrom),
+                                          np.array(lag3predictfrom))), (0,2,1))
+    
+    # show number of unique players, and prompt to continue
+    print('Arrays for modelling and predicting have shape ',
+          modelarrayfrom.shape, predictarrayfrom.shape)
+    if quiet == False:
+        if input('Continue? y/n : ') != 'y':
+            print('Not continuing')
+            return
+        else:
+            print('Conintuing')
+            
+    
+    #return the arrays for model building and predicting
+    return modelarrayfrom, predictarrayfrom
+
+
 
 def modelrun(modelfrom, predictfrom, nrons, epchs, bsize):
     
@@ -607,4 +780,185 @@ def act_pred_basic(predict_from, result):
     #np.save('./results/LAG3_POINTS50/LSTM8-MSE_ADAM-epo64_batch25.npy',result)
 
 
-                   
+        
+
+
+
+
+
+
+
+
+#%%
+
+def arrayLSTM(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=False):
+    """
+    This function will generate an LSTM-ready, lagged array for a set of
+    players, given their positions, a stat on which to filter players,
+    a minimum total for filter stat, and the stat to be predicted. Seasons can
+    be ignored.
+    
+    positions = a list of strings, like this: ['C', 'L', 'R', 'D']
+    
+    filter_stat = a string defining which stat will be used to filter players
+    
+    min_stat = a number defining the minimum value for the stat specified.
+                Players not acheiving that value (or above) in their careers
+                will not be included in the retrieval. Note: a player's entire
+                career is retrieved if they pass the filter criterion for
+                any season.
+    
+    stat4lag = a string defining the stat to be predicted
+    
+    not_season = a list defining seasons ignored by the extraction. For example,
+                [20152016, 20182019]
+                
+    quiet = a parameter to toggle requirement for user input. True means no
+                interaction required.
+    """
+    #Retrieve the players to be included
+    
+    # connect to our database that will hold everything
+    conn = sqlite3.connect(db_name)
+    
+    with conn:
+        # get the cursor so we can do stuff
+        cur = conn.cursor()
+    
+        # SQLite statement to retreive the data in question (forwards who have
+        # scored more than min_stat points in a season):
+        cur.execute("SELECT playerId FROM s_skater_summary WHERE {} > {} \
+                    AND playerPositionCode IN ({}) \
+                    AND seasonID NOT IN ({})".format(filter_stat,'?',','.join('?' * len(positions)),','.join('?' * len(not_season))),[min_stat]+positions+not_season)
+    
+        # Put selected playerIds in an array (playerId is a unique identifier)
+        data = np.array(cur.fetchall())
+
+    # data contains multiple entries for some players (those who have scored
+    # more than 50 points in multiple seasons) - isolate unique values
+    players = np.unique(data)
+
+    # show number of unique players, and prompt to continue
+    print(players.shape[0], "players identified")
+    if quiet == False:
+        if input('Continue? y/n : ') != 'y':
+            print('Not continuing')
+            return
+        else:
+            print('Conintuing')
+
+
+    #Retrieve the stats from the database and apply a lag
+    for player in players:
+        
+        
+        # Starting here, can I reqrite this to use DataFrames instead of np arrays? #
+        
+        
+        # Start with the first lag
+        interim1 = extractlag(int(player),stats4lag,1,not_season=not_season) # create 2D array of a player's performance
+        np.array(pd.DataFrame(interim1).dropna(inplace=True)) # ignore "empty" rows
+        
+        if interim1.shape[0] > 0:
+    
+            if 'lagged1' in locals(): # if lagged1 already exists, append the player's results to it
+                lagged1 = np.append(lagged1, interim1, axis=0)
+    
+            else: # else, create lagged1
+                lagged1 = interim1[:]
+    
+            
+            # Now the second lag
+            # Ensure lagged2 will have same shape as lagged1 by making each player's
+            # contribution have the same shape for each lag.
+            interim = np.zeros_like(interim1) - 999 # Identify missing data as -999
+    
+            interim2 = extractlag(int(player),stats4lag,2,not_season=not_season)
+            np.array(pd.DataFrame(interim2).dropna(inplace=True))
+    
+            interim[:interim2.shape[0],:] = interim2
+    
+            if 'lagged2' in locals():
+                lagged2 = np.append(lagged2, interim, axis=0)
+    
+            else:
+                lagged2 = interim[:,:]
+    
+            
+            # Now the third lag
+            interim = np.zeros_like(interim1) - 999
+    
+            interim3 = extractlag(int(player), stats4lag, 3,not_season=not_season)
+            np.array(pd.DataFrame(interim3).dropna(inplace=True))
+    
+            interim[:interim3.shape[0],:] = interim3
+    
+            if 'lagged3' in locals():
+                lagged3 = np.append(lagged3, interim, axis=0)
+    
+            else:
+                lagged3 = interim[:,:]
+    
+    
+    # Check that the shapes of the three arrays are identical:
+    if lagged1.shape==lagged2.shape and lagged2.shape==lagged3.shape:
+        print('Lagged arrays all have shape ',lagged1.shape)
+    else:
+        print('Lagged arrays dont have the same shape :( ')
+        print(lagged1.shape,lagged2.shape,lagged3.shape)
+        print('Not continuing')
+        return
+    
+    # Convert these arrays into dataframes for convenience later...
+    #lagged1 = pd.DataFrame(lagged1)
+    #lagged1.columns = ('year', 'points', 'goals', 'ppPoints', 'shots', 'timeOnIcePerGame', 'assists', 'games', 'pointslag')
+    
+    #lagged2 = pd.DataFrame(lagged2)
+    #lagged2.columns = ('year', 'points', 'goals', 'ppPoints', 'shots', 'timeOnIcePerGame', 'assists', 'games', 'pointslag')
+    
+    #lagged3 = pd.DataFrame(lagged3)
+    #lagged3.columns = ('year', 'points', 'goals', 'ppPoints', 'shots', 'timeOnIcePerGame', 'assists', 'games', 'pointslag')
+    
+    
+    #Separate training from target data - always trying to build the model by
+        #predicting the latest season
+        
+    lastseason = int(max(lagged1['year']))
+    
+    # predict from the 20152016 season (lag = 1)
+    lag1predictfrom = lagged1.loc[lagged1['year'] == lastseason]
+    # model from the remaining seasons
+    lag1model = lagged1.loc[lagged1['year'] != lastseason]
+    
+    # predict from the 20142015 season (lag = 2)
+    lag2predictfrom = lagged2.loc[lagged1['year'] == lastseason] # the rows of interest are in the same position as those in lagged1
+    # model from the remaining seasons
+    lag2model = lagged2.loc[lagged1['year'] != lastseason]
+    
+    lag3predictfrom = lagged3.loc[lagged1['year'] == lastseason]
+    lag3model = lagged3.loc[lagged1['year'] != lastseason]
+    
+    
+    # This array contains all data needed test and train the model
+    modelarrayfrom = np.transpose(np.dstack((np.array(lag1model),
+                                        np.array(lag2model),
+                                        np.array(lag3model))), (0,2,1))
+    
+    # This array is the one that will be predicted from:
+    predictarrayfrom = np.transpose(np.dstack((np.array(lag1predictfrom),
+                                          np.array(lag2predictfrom),
+                                          np.array(lag3predictfrom))), (0,2,1))
+    
+    # show number of unique players, and prompt to continue
+    print('Arrays for modelling and predicting have shape ',
+          modelarrayfrom.shape, predictarrayfrom.shape)
+    if quiet == False:
+        if input('Continue? y/n : ') != 'y':
+            print('Not continuing')
+            return
+        else:
+            print('Conintuing')
+            
+    
+    #return the arrays for model building and predicting
+    return modelarrayfrom, predictarrayfrom
