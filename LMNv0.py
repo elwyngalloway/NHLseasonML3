@@ -208,6 +208,11 @@ def extractlag(player, stats4lag, lag, not_season = []):
         df.drop(['position'],axis=1, inplace=True)
         # some players were never drafted - leaves blank in draftPos. Define this as 300
         df['draftPos'].replace('', 300, inplace=True)
+        # calculate a points column
+        df.insert(6,'points',df['goals']+df['assists'])
+        # convert hits per game to hits (per season)
+        df = df.rename(index=str, columns={'hitsPerGame': 'hits'})
+        df['hits'] = df['hits']*df['games']
         # ensure the results are sorted by year, latest at the top:
         df = df.sort_values(['year'],ascending = False)
         # create a dataframe of shifted values - these are lagged w.r.t. the original dataframe
@@ -671,12 +676,12 @@ def modelrun(modelfrom, predictfrom, nrons, epchs, bsize):
     history = model.fit(train_ind, train_resp, epochs=epchs, batch_size=bsize, validation_data=(test_ind, test_resp),verbose=0, shuffle=False)
 
     # plot history
-#    plt.plot(history.history['loss'], label='train')
-#    plt.plot(history.history['val_loss'], label='test')
-#    plt.xlabel('Epoch')
-#    plt.ylabel('Loss')
-#    plt.legend()
-#    plt.show()
+    plt.plot(history.history['loss'], label='train')
+    plt.plot(history.history['val_loss'], label='test')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.show()
     
     # Make a prediction:    
     predicted_resp = model.predict(predictfrom_ind)
