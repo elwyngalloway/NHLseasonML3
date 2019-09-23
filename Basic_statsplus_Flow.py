@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Thu Sep 12 17:10:47 2019
+Created on Sun Sep 22 20:35:43 2019
 
-Recreate the basic ML4NHL flow using LMNv0
+Create a basic stats+ prediction.
 
 @author: Galloway
 """
@@ -11,8 +11,8 @@ Recreate the basic ML4NHL flow using LMNv0
 import LMNv0
 
 # Retrieve data and form into LSTM-ready arrays
-modelfrom, predictfrom = LMNv0.arrayLSTM_basic(['L','R','C','F'],'points', 50, 
-                                               'points', not_season=[], quiet=False)
+modelfrom, predictfrom = LMNv0.arrayLSTM(['L','R','C','F'],'points', 50,
+                                         ['points'], not_season=[20182019,20172018], quiet=False)
 
 # Generate prediction
 prediction = LMNv0.modelrun(modelfrom, predictfrom, 15, 15, 15)
