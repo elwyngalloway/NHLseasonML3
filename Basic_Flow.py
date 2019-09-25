@@ -3,7 +3,9 @@
 """
 Created on Thu Sep 12 17:10:47 2019
 
-Recreate the basic ML4NHL flow using LMNv0
+Recreate the basic ML4NHL flow using LMNv0.
+
+_basic stats extracted
 
 @author: Galloway
 """

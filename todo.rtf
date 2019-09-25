@@ -10,15 +10,15 @@
 \
 Predict multiple stats at once. - arrayLSTM already prepares lags, but model builder does not\
 \
-Build more elaborate result assessments.\
-\
-Build function to prepare a pred-from array for latest year - needed to predict next year!\
+Ensure forecasts include some sort of name or player ID to facilitate draft lists\
 \
 Consider data engineering trick to emphasize high-end scorers or debias the mid-range ones.\
+	I tried to debits by selecting a uniform distribution of results, but this didn\'92t change the result.\
 \
 Add more complex functions to LMN\
 \
 Build out more complex flows - iterations, to create probabilistic predictions, test parameters\
+\
 \
 \
 
@@ -33,4 +33,14 @@ The pyramid Neural Network appeared to produce results with wider (more realisti
 \
 Created the LMN library  the _basic functions are completed, including a function to generate a basic result assessment \
 \
-Calculated points on stat extraction instead of extracting from db.}
+Calculated points on stat extraction instead of extracting from db.\
+\
+Create a function to calculate the p10p50p90 from an array of results\
+\
+Build more elaborate result assessments. - predictions vs actual with error bars\
+\
+Build function to prepare a pred-from array for latest year - needed to predict next year!\
+	Using extract lag with lag=0 with existing functions works\
+	Modified arrayLSTM to generate forecast model arrays, if requested\
+	Created new function to generate prediction arrays for forecasts.\
+}

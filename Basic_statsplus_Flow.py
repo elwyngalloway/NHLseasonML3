@@ -19,3 +19,11 @@ prediction = LMNv0.modelrun(modelfrom, predictfrom, 15, 15, 15)
 
 # Plot results
 LMNv0.act_pred_basic(predictfrom, prediction)
+
+        
+        
+        
+        
+        
+        
+        

@@ -435,7 +435,7 @@ def arrayLSTM_basic(positions, filter_stat, min_stat, stat4lag, not_season=[], q
 #   data into training and testing sets; trains the model; predicts; evaluates
 #   prediction quality
 
-def arrayLSTM(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=False):
+def arrayLSTM(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=False, forecast=False):
     """
     This function will generate an LSTM-ready, lagged array for a set of
     players, given their positions, a stat on which to filter players,
@@ -459,6 +459,9 @@ def arrayLSTM(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=
                 
     quiet = a parameter to toggle requirement for user input. True means no
                 interaction required.
+                
+    forecast = a parameter to toggle if function is used for forecasting. If True,
+                the latest season is not removed from model-from array
     """
     #Retrieve the players to be included
     
@@ -571,6 +574,17 @@ def arrayLSTM(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=
     lag3predictfrom = lagged3.loc[lagged1['year'] == lastseason]
     lag3model = lagged3.loc[lagged1['year'] != lastseason]
     
+    if forecast == True:
+        # overwrite the lagXmodel arrays
+        lag1model = lagged1.copy()
+        lag2model = lagged2.copy()
+        lag3model = lagged3.copy()
+        
+        #overwrite the lagXpredictfrom arrays
+        lag1predictfrom = np.zeros((2,2))
+        lag2predictfrom = np.zeros((2,2))
+        lag3predictfrom = np.zeros((2,2))
+    
     
     # This array contains all data needed test and train the model
     modelarrayfrom = np.transpose(np.dstack((np.array(lag1model),
@@ -595,6 +609,155 @@ def arrayLSTM(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=
     
     #return the arrays for model building and predicting
     return modelarrayfrom, predictarrayfrom
+
+
+def arrayLSTM_forecast(positions, filter_stat, min_stat, stats4lag, not_season=[], quiet=False):
+    """
+    This function will generate an LSTM-ready, lagged array for a set of
+    players, given their positions, a stat on which to filter players,
+    a minimum total for filter stat, and the stat to be predicted. Seasons can
+    be ignored.
+    
+    The difference with _forecast is that it uses the latest stats to forecast
+    a future season. Note: this only returns a predict-from array.
+    
+    positions = a list of strings, like this: ['C', 'L', 'R', 'D']
+    
+    filter_stat = a string defining which stat will be used to filter players
+    
+    min_stat = a number defining the minimum value for the stat specified.
+                Players not acheiving that value (or above) in their careers
+                will not be included in the retrieval. Note: a player's entire
+                career is retrieved if they pass the filter criterion for
+                any season.
+    
+    stat4lag = a string defining the stat to be predicted
+    
+    not_season = a list defining seasons ignored by the extraction. For example,
+                [20152016, 20182019]
+                
+    quiet = a parameter to toggle requirement for user input. True means no
+                interaction required.
+    """
+    #Retrieve the players to be included
+    
+    # connect to our database that will hold everything
+    conn = sqlite3.connect(db_name)
+    
+    with conn:
+        # get the cursor so we can do stuff
+        cur = conn.cursor()
+    
+        # SQLite statement to retreive the data in question (forwards who have
+        # scored more than min_stat points in a season):
+        cur.execute("SELECT playerId FROM s_skater_summary WHERE {} > {} \
+                    AND playerPositionCode IN ({}) \
+                    AND seasonID NOT IN ({})".format(filter_stat,'?',','.join('?' * len(positions)),','.join('?' * len(not_season))),[min_stat]+positions+not_season)
+    
+        # Put selected playerIds in an array (playerId is a unique identifier)
+        data = np.array(cur.fetchall())
+
+    # data contains multiple entries for some players (those who have scored
+    # more than 50 points in multiple seasons) - isolate unique values
+    players = np.unique(data)
+
+    # show number of unique players, and prompt to continue
+    print(players.shape[0], "players identified")
+    if quiet == False:
+        if input('Continue? y/n : ') != 'y':
+            print('Not continuing')
+            return
+        else:
+            print('Conintuing')
+
+
+    #Retrieve the stats from the database and apply a lag
+    for player in players:
+    
+        # Start with the first lag
+        interim1 = extractlag(int(player),stats4lag,0,not_season=not_season) # create 2D DataFrame of a player's performance
+        
+        if interim1.shape[0] > 0:
+    
+            if 'lagged1' in locals(): # if lagged1 already exists, append the player's results to it
+                lagged1 = pd.DataFrame.append(lagged1, interim1)
+    
+            else: # else, create lagged1
+                lagged1 = interim1.copy()
+                
+            lagged1.reset_index(inplace=True, drop=True)
+                
+                
+            # Now the second lag
+            # Ensure lagged2 will have same shape as lagged1 by making each player's
+            # contribution have the same shape for each lag.
+            interim = interim1.copy() * 0 - 999 # Identify missing data as -999
+    
+            interim2 = extractlag(int(player),stats4lag,1,not_season=not_season)
+    
+            interim2 = pd.DataFrame.append(interim2,interim.iloc[:(interim.shape[0]-interim2.shape[0]),:]).reset_index(drop=True)
+    
+            if 'lagged2' in locals():
+                lagged2 = pd.DataFrame.append(lagged2, interim2)
+    
+            else:
+                lagged2 = interim2.copy()
+            
+            lagged2.reset_index(inplace=True, drop=True)
+
+ 
+            # Now the third lag
+            interim = interim1.copy() * 0 - 999 # Identify missing data as -999
+    
+            interim3 = extractlag(int(player),stats4lag,2,not_season=not_season)
+    
+            interim3 = pd.DataFrame.append(interim3,interim.iloc[:(interim.shape[0]-interim3.shape[0]),:]).reset_index(drop=True)
+    
+            if 'lagged3' in locals():
+                lagged3 = pd.DataFrame.append(lagged3, interim3)
+    
+            else:
+                lagged3 = interim3.copy()  
+                
+            lagged3.reset_index(inplace=True, drop=True)
+    
+    
+    # Check that the shapes of the three arrays are identical:
+    if lagged1.shape==lagged2.shape and lagged2.shape==lagged3.shape:
+        print('Lagged arrays all have shape',lagged1.shape)
+    else:
+        print('Lagged arrays dont have the same shape :( ')
+        print(lagged1.shape,lagged2.shape,lagged3.shape)
+        print('Not continuing')
+        return
+
+   
+    # Separate training from target data - always trying to build the model by
+    # predicting the latest season
+        
+    lastseason = int(max(lagged1['year']))
+    
+    # predict from the 20152016 season (lag = 1)
+    lag1predictfrom = lagged1.loc[lagged1['year'] == lastseason]
+    
+    # predict from the 20142015 season (lag = 2)
+    lag2predictfrom = lagged2.loc[lagged1['year'] == lastseason] # the rows of interest are in the same position as those in lagged1    
+    lag3predictfrom = lagged3.loc[lagged1['year'] == lastseason]
+
+    
+    # This array is the one that will be predicted from:
+    predictarrayfrom = np.transpose(np.dstack((np.array(lag1predictfrom),
+                                          np.array(lag2predictfrom),
+                                          np.array(lag3predictfrom))), (0,2,1))
+    
+    # check array shapes
+    print('Array for prediction has shape ', predictarrayfrom.shape)
+            
+    
+    #return the arrays for model building and predicting
+    return predictarrayfrom
+
+
 
 
 
@@ -676,12 +839,12 @@ def modelrun(modelfrom, predictfrom, nrons, epchs, bsize):
     history = model.fit(train_ind, train_resp, epochs=epchs, batch_size=bsize, validation_data=(test_ind, test_resp),verbose=0, shuffle=False)
 
     # plot history
-    plt.plot(history.history['loss'], label='train')
-    plt.plot(history.history['val_loss'], label='test')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.show()
+    #plt.plot(history.history['loss'], label='train')
+    #plt.plot(history.history['val_loss'], label='test')
+    #plt.xlabel('Epoch')
+    #plt.ylabel('Loss')
+    #plt.legend()
+    #plt.show()
     
     # Make a prediction:    
     predicted_resp = model.predict(predictfrom_ind)
@@ -777,15 +940,222 @@ def act_pred_basic(predict_from, result):
     
     #np.save('./results/LAG3_POINTS50/LSTM8-MSE_ADAM-epo64_batch25.npy',result)
 
-
+def act_pred_mean(predict_from, result):
+    """
+    A function that creates a simple actual vs mean predicted plot to visually
+    inspect the results.
+    
+    predict_from = array to be predicted from, as generated by LSTM_basic. This
+                    should include the actual results.
+                    
+    predicted = array of predicted results, as returned by iterations of
+                    modelrun.    
+    
+    
+    """
+    
+    # Retrieve the responding variables for predictarrayfrom
+    actual = predict_from[:,0,-1]
+    
+    # Find the mask
+    resultmask = np.ma.masked_less(result,1).mask
+    
+    # result.shape = [player, lag, iteration]
+    
+    # Create an alternate measure of error: use mean of the lags for each player
+    # as the prediction. Calculate the RMSE of these means.         
+    RMSEmeans =np.empty((result.shape[2]))
+    
+    meanresult = np.zeros((result.shape[0],result.shape[2]))
+    
+    for iteration in range(result.shape[2]):
+        for player in range(result.shape[0]):
+            meanresult[player,iteration] = np.mean(result[player,:,iteration][np.ma.masked_greater(result[player,:,iteration],2).mask])
+        
+        RMSEmeans[iteration] = np.sqrt(mean_squared_error(meanresult[:,iteration],actual))
+    
+    # For convenience, capture these errors in a single array. First columns are
+    # the RMSEs for each lag, followed by the mean of errors for all lags,
+    # then the error of the mean estimates for all lags.
+    #RMSEall = np.concatenate((RMSEs,np.expand_dims(np.mean(RMSEs,axis=0),axis=1).T,np.expand_dims(RMSEmeans,axis=1).T),axis=0)
+    
+    # For now, I think the best representation of the error is the RMSE for
+    # the mean of the the lag estimates. Report this as error.
+    error = np.mean(RMSEmeans)
+    
+    fig2 = plt.figure(figsize=(5,5))
+    az = fig2.add_subplot(1,1,1)
+    az.scatter(actual,np.mean(meanresult, axis=1),c="b", s=10)
+    #az.scatter(actual,np.mean(result[:,0,:][~resultmask[:,0,0]], axis=1),c="b", s=12)
+    #az.scatter(actual[~resultmask[:,1,0]],np.mean(result[:,1,:][~resultmask[:,1,0]], axis=1),c="r", s=12)
+    #az.scatter(actual[~resultmask[:,2,0]],np.mean(result[:,2,:][~resultmask[:,2,0]], axis=1),c="g", s=12)
+    az.plot([0,50,120],[0,50,120])
+    plt.ylim(-5,110)
+    plt.xlim(-5,110)
+    plt.xlabel('Actual Results')
+    plt.ylabel('Predicted Results')
+    plt.title('Actual vs. Predicted', fontsize=16)
+    plt.grid(True)
+    plt.text(10,85,str('RMSE = '+str(round(float(error),2))),fontsize=16)
+    
+    #np.save('./results/LAG3_POINTS50/LSTM8-MSE_ADAM-epo64_batch25.npy',result)
         
 
+def act_pred_probabilistic(predict_from, result):
+    """
+    act_pred_probabilistic compares actual to predicted results, demonstrating
+    the a number of predictions by showing the P10 and P90 results as error bars.
+    
+    predict_from = array to be predicted from, as generated by LSTM_basic. This
+                    should include the actual results.
+                    
+    predicted = array of probabilistic results, as returned by result_prob.
+    
+    """
+    
+    probabilistic_result = result_probs(result)
+    
+    # create error array that contains the y error that we're representing.
+    # First row is error below, second is error above
+    
+    err_arr = np.zeros((probabilistic_result.shape[0],2))
+    err_arr[:,0] = probabilistic_result[:,1]-probabilistic_result[:,0]
+    err_arr[:,1] = probabilistic_result[:,2]-probabilistic_result[:,1]
+    err_arr = np.transpose(err_arr)
+    
+    
+    # Color the points by their success in predicting production within error
+
+    # Create a 1D array indicating whether a player's performance matched their
+    # the prediction within error
+    test_acc = np.full((predict_from.shape[0]), False)
+    for i in range(predict_from.shape[0]):
+        if probabilistic_result[i,0] <= predict_from[i,0,-1] and probabilistic_result[i,2] >= predict_from[i,0,-1]:
+            test_acc[i] = 'True'
+
+    # plot a error bars
+    plt.figure(figsize=(5,5))
+    
+    ax = plt.subplot(1,1,1)
+    ax.plot([0,50,120],[0,50,120])
+    
+    # plot all error bars in red, then all P50 points as red
+    ax.errorbar(predict_from[:,0,-1],probabilistic_result[:,1], yerr=err_arr, fmt='|', capsize=1, linewidth=0.5,c='r')
+    ax.scatter(predict_from[:,0,-1],probabilistic_result[:,1],c="r",s=10)
+    
+    # now overwrite correct error bars in green, and all correct P50 points as green
+    ax.errorbar(predict_from[:,0,-1][test_acc],probabilistic_result[:,1][test_acc], yerr=err_arr.T[test_acc].T, fmt='|', capsize=1, linewidth=0.5,c='g')
+    ax.scatter(predict_from[:,0,-1][test_acc],probabilistic_result[:,1][test_acc],c="g",s=10)
+
+    ax.set_xlim(-5,110)
+    ax.set_ylim(-5,110)
+    
+    ax.set_aspect('equal')
+    ax.grid(True,linestyle='--')
+    ax.annotate(np.round(len(np.where(test_acc==True)[0])/len(test_acc)*100,1), xy=(15, 5))
+    ax.annotate( '% of predictions within error', xy=(25, 5))
+    plt.yticks(range(0,120,20), fontsize=8)
+    plt.xticks(range(0,120,20), fontsize=8)
+    plt.xlabel('Actual Results')
+    plt.ylabel('Predicted Results')
+    plt.title('Probabilistic Prediction\nP10 P50 P90', fontsize=10)
+    
+    # Add the RMSE to plot
+    # Find the mask
+    resultmask = np.ma.masked_less(result,1).mask
+    
+    # result.shape = [player, lag, iteration]
+    
+    # Create an alternate measure of error: use mean of the lags for each player
+    # as the prediction. Calculate the RMSE of these means.         
+    RMSEmeans =np.empty((result.shape[2]))
+    
+    meanresult = np.zeros((result.shape[0],result.shape[2]))
+    
+    for iteration in range(result.shape[2]):
+        for player in range(result.shape[0]):
+            meanresult[player,iteration] = np.mean(result[player,:,iteration][np.ma.masked_greater(result[player,:,iteration],2).mask])
+        
+        RMSEmeans[iteration] = np.sqrt(mean_squared_error(meanresult[:,iteration],predict_from[:,0,-1]))
+    
+    error = np.mean(RMSEmeans)
+    
+    plt.text(10,85,str('RMSE = '+str(round(float(error),2))),fontsize=16)    
+    plt.show()
+
+
+def result_probs(result):
+    """
+    result_probs takes an array of prediction interation results and determines
+    the P10 P50 and P90 preditions for each player.
+    
+    result: dimension 1 is the player; dimension 2 is the lag; dimensiion
+                    3 is the iteration
+                    
+    """
+    
+    # I need to mask the predicitons for nan rows...
+    
+    out = np.zeros((result.shape[0],3))
+
+    for player in range(result.shape[0]):
+        out[player] = np.percentile(result[player,:,:][np.ma.masked_greater(result[player,:,:],2).mask],[10,50,90])
+    
+    return out
 
 
 
 
 
+
+
+def unbias_model_set_points(model_from):
+    """
+    unbias_model_set selects a relatively unbiased set of results to model from
+    
+    model_from is generated by arrayLSTM.
+    
+    
+    * I didn't find this made a difference *
+    
+    
+    """
+    
+    # Select a subset of data from the first slice, then use indicies to select
+    # the rest of the data
+    
+    #bin_size = 10
+    target_count = 50
+    
+    # Let's target 50 samples per bin of 10 points
+    # I'm being "clever" here by mixing a few steps together
+    out_indx = np.random.choice(np.where(np.logical_and(0 < model_from[:,0,6], model_from[:,0,6] <= 10))[0], target_count, replace=False).tolist()
+    out_indx += np.random.choice(np.where(np.logical_and(10 < model_from[:,0,6], model_from[:,0,6] <= 20))[0], target_count, replace=False).tolist()
+    out_indx += np.random.choice(np.where(np.logical_and(20 < model_from[:,0,6], model_from[:,0,6] <= 30))[0], target_count, replace=False).tolist()
+    out_indx += np.random.choice(np.where(np.logical_and(30 < model_from[:,0,6], model_from[:,0,6] <= 40))[0], target_count, replace=False).tolist()
+    out_indx += np.random.choice(np.where(np.logical_and(40 < model_from[:,0,6], model_from[:,0,6] <= 50))[0], target_count, replace=False).tolist()
+    out_indx += np.random.choice(np.where(np.logical_and(50 < model_from[:,0,6], model_from[:,0,6] <= 60))[0], target_count, replace=False).tolist()
+    out_indx += np.random.choice(np.where(np.logical_and(60 < model_from[:,0,6], model_from[:,0,6] <= 70))[0], target_count, replace=False).tolist()
+    out_indx += np.random.choice(np.where(np.logical_and(70 < model_from[:,0,6], model_from[:,0,6] <= 80))[0], target_count, replace=False).tolist()
+    out_indx += np.where(80 < model_from[:,0,6])[0].tolist()
+    
+    out = model_from[out_indx,:,:]
+    
+    return out
 
 
 #%%
+    
+
+
+
+
+
+
+
+
+
+
+
+
 
