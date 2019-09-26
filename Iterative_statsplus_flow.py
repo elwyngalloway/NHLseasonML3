@@ -9,16 +9,17 @@ Create probabilistic predictions through iterative predictions
 """
 
 import LMNv0
+import numpy as np
 
 # Retrieve data and form into LSTM-ready arrays
-modelfrom, predictfrom = LMNv0.arrayLSTM(['L','R','C','F'],'points', 50,
+modelfrom, predictfrom = LMNv0.arrayLSTM(['L','R','C'],'points', 50,
                                          ['points'], not_season=[20182019,20172018], quiet=True)
 
-actual = predictfrom[:,0,-1] #the actual performance is held here
+#actual = predictfrom[:,0,-1] #the actual performance is held here
 
 # Generate predictions
 
-numiters = 25
+numiters = 35
 
 neurons = 25 #the number of neurons in first layer of NN
 epochs = 10
@@ -36,7 +37,6 @@ for i in range(numiters):
 
 # Generate the QC plot or plots
 LMNv0.act_pred_probabilistic(predictfrom, result)
-LMNv0.act_pred_basic(predictfrom, result)
 
 
 
