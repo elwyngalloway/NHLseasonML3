@@ -1441,11 +1441,43 @@ def result_lag_reduce(result):
     return result[:,2,:]
         
 
-#%%
+def id_result_names(predict_from, result_reduced):
+    """
+    id_names generates a final forecast that contains the name of player and
+    the P10P50P90 predictions for their production.
+    
+    predict_from = array that contains the playerId
+    
+    result_reduced = array of results reduced to a single lag, as produced by
+                result_lag_reduce.
+    
+    """
+    
+    playernames = np.array([])
+    
+    for player in predict_from[:,0,1]:
+        
+        # connect to our database that will hold everything
+        conn = sqlite3.connect(db_name)
+    
+        with conn:
+            # get the cursor so we can do stuff
+            cur = conn.cursor()
+    
+            # Notice that the stats extracted are hard-coded...
+            cur.execute("SELECT playerName FROM s_skater_summary \
+                        WHERE playerId={}".format(int(player)))
+    
+            name = np.unique(cur.fetchall())
+            
+        playernames = np.append(playernames,name,axis=0)
+    
+    out = np.append(np.expand_dims(playernames,axis=1), result_reduced_probs(result_reduced),axis=1)
+    
+    return out
 
 
-
-
+    
 
 
 

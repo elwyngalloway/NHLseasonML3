@@ -10,16 +10,12 @@
 \
 Predict multiple stats at once. - arrayLSTM already prepares lags, but model builder does not\
 \
-Ensure forecasts include some sort of name or player ID to facilitate draft lists\
-\
 Consider data engineering trick to emphasize high-end scorers or debias the mid-range ones.\
 	I tried to debits by selecting a uniform distribution of results, but this didn\'92t change the result.\
 \
 Add more complex functions to LMN\
 \
-Build out more complex flows - iterations, to create probabilistic predictions, test parameters\
-\
-\
+Generate a sorted box-whisker diagram?\
 \
 
 \b Competed:\
@@ -27,7 +23,7 @@ Build out more complex flows - iterations, to create probabilistic predictions, 
 
 \b0 Create new repo and ensure that the old scripts work properly.\
 \
-Update the db with 20182019 stats - may require adjustments to nhl.com requests\
+Update the db with 20182019 stats - may require adjustments to nhl.com requests (didn\'92t this year, yeah!)\
 \
 The pyramid Neural Network appeared to produce results with wider (more realistic) error. Build this in. Try some sort of recursive way of defining this?\
 \
@@ -43,4 +39,7 @@ Build function to prepare a pred-from array for latest year - needed to predict 
 	Using extract lag with lag=0 with existing functions works\
 	Modified arrayLSTM to generate forecast model arrays, if requested\
 	Created new function to generate prediction arrays for forecasts.\
-}
+\
+Ensure forecasts include some sort of name or player ID to facilitate draft lists\
+\
+Build out more complex flows - iterations, to create probabilistic predictions, test parameters}

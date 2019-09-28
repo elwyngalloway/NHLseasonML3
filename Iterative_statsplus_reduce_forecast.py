@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Thu Sep 26 23:19:32 2019
+Created on Tue Sep 24 20:45:55 2019
 
-The flow that leverages the fact that the best prediction is in lag3.
+Predict performance for 20192020
 
 @author: Galloway
 """
-
-
 import LMNv0
 import numpy as np
 
 # Retrieve data and form into LSTM-ready arrays
-modelfrom, predictfrom = LMNv0.arrayLSTM(['D'],'points', 40,
-                                         ['points'], not_season=[], quiet=True)
+modelfrom = LMNv0.arrayLSTM(['D'],'points', 40, ['points'],
+                            not_season=[], quiet=True, forecast=True)[0]
 
+predictfrom = LMNv0.arrayLSTM_forecast(['D'],'points', 40, ['points'],
+                                       not_season=[], quiet=True)
 
 # Generate predictions
 
-numiters = 15
+numiters = 80
 
 neurons = 25 #the number of neurons in first layer of NN
 epochs = 10
@@ -34,9 +34,32 @@ for i in range(numiters):
 
 
 # Summarize the results
-        
-# Reduce the results down to the best predictions
-result_reduced = LMNv0.result_lag_reduce(result)
+result = LMNv0.result_lag_reduce(result)
 
-# Generate the QC plot or plots
-LMNv0.act_pred_probabilistic_final(predictfrom, result_reduced)
+final = LMNv0.id_result_names(predictfrom, result)
+
+np.save('Probabilistic_points_forecast_D_20192020.npy',final)
+
+np.savetxt('Probabilistic_points_forecast_D_20192020.csv', final, delimiter=',', fmt='%s')
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
