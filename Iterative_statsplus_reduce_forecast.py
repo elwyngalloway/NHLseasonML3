@@ -11,10 +11,10 @@ import LMNv0
 import numpy as np
 
 # Retrieve data and form into LSTM-ready arrays
-modelfrom = LMNv0.arrayLSTM(['D'],'points', 40, ['points'],
+modelfrom = LMNv0.arrayLSTM(['C','R','L'],'points', 50, ['goals'],
                             not_season=[], quiet=True, forecast=True)[0]
 
-predictfrom = LMNv0.arrayLSTM_forecast(['D'],'points', 40, ['points'],
+predictfrom = LMNv0.arrayLSTM_forecast(['C','R','L'],'points', 50, ['goals'],
                                        not_season=[], quiet=True)
 
 # Generate predictions
@@ -38,9 +38,9 @@ result = LMNv0.result_lag_reduce(result)
 
 final = LMNv0.id_result_names(predictfrom, result)
 
-np.save('Probabilistic_points_forecast_D_20192020.npy',final)
+np.save('Probabilistic_goals_forecast_F_20192020.npy',final)
 
-np.savetxt('Probabilistic_points_forecast_D_20192020.csv', final, delimiter=',', fmt='%s')
+np.savetxt('Probabilistic_goals_forecast_F_20192020.csv', final, delimiter=',', fmt='%s')
     
     
     

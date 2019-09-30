@@ -1443,8 +1443,8 @@ def result_lag_reduce(result):
 
 def id_result_names(predict_from, result_reduced):
     """
-    id_names generates a final forecast that contains the name of player and
-    the P10P50P90 predictions for their production.
+    id_names generates a final forecast that contains the name of player,
+    their position, and the P10P50P90 predictions for their production.
     
     predict_from = array that contains the playerId
     
@@ -1453,7 +1453,7 @@ def id_result_names(predict_from, result_reduced):
     
     """
     
-    playernames = np.array([])
+    playernames = np.array([[],[]]).T
     
     for player in predict_from[:,0,1]:
         
@@ -1465,18 +1465,18 @@ def id_result_names(predict_from, result_reduced):
             cur = conn.cursor()
     
             # Notice that the stats extracted are hard-coded...
-            cur.execute("SELECT playerName FROM s_skater_summary \
+            cur.execute("SELECT playerName, playerPositionCode FROM s_skater_summary \
                         WHERE playerId={}".format(int(player)))
     
-            name = np.unique(cur.fetchall())
+            name_pos = np.array(cur.fetchall()[0])
             
-        playernames = np.append(playernames,name,axis=0)
+        playernames = np.append(playernames,np.expand_dims(name_pos,axis=1).T,axis=0)
     
-    out = np.append(np.expand_dims(playernames,axis=1), result_reduced_probs(result_reduced),axis=1)
+    out = np.append(playernames, result_reduced_probs(result_reduced),axis=1)
     
     return out
 
-
+#%%
     
 
 

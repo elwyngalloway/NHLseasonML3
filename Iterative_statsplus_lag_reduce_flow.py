@@ -13,8 +13,8 @@ import LMNv0
 import numpy as np
 
 # Retrieve data and form into LSTM-ready arrays
-modelfrom, predictfrom = LMNv0.arrayLSTM(['D'],'points', 40,
-                                         ['points'], not_season=[], quiet=True)
+modelfrom, predictfrom = LMNv0.arrayLSTM(['C','R','L'],'goals', 20,
+                                         ['goals'], not_season=[], quiet=True)
 
 
 # Generate predictions
